@@ -47,10 +47,10 @@ const fzLocal = {
             if (msg.data.hasOwnProperty('SinopeMainCycleOutput')) {
                 result.main_cycle_output = cycleOutputLookup[msg.data['SinopeMainCycleOutput']];
             }
-            if (msg.data.hasOwnProperty('1026')) {
-                const lookup = {0: 'on_demand', 1: 'sensing'};
-                result.backlight_auto_dim = lookup[msg.data['1026']];
-            }
+//            if (msg.data.hasOwnProperty('1026')) {
+//                const lookup = {0: 'on_demand', 1: 'sensing'};
+//                result.backlight_auto_dim = lookup[msg.data['1026']];
+//            }
             if (msg.data.hasOwnProperty('SinopeBacklight')) {
                 const lookup = {0: 'on_demand', 1: 'sensing'};
                 result.backlight_auto_dim = lookup[msg.data['SinopeBacklight']];
@@ -128,6 +128,8 @@ const fzLocal = {
             }
             if (msg.data.hasOwnProperty('outdoorTempToDisplay')) {
                 result.thermostat_outdoor_temperature = precisionRound(msg.data['outdoorTempToDisplay'], 2) / 100;
+                // DEPRECATED: Use Second Display Mode or control via set outdoorTempToDisplayTimeout
+                result.enable_outdoor_temperature = msg.data['outdoorTempToDisplayTimeout'] === 12 ? 'OFF' : 'ON';
             }
             if (msg.data.hasOwnProperty('currentTimeToDisplay')) {
                 result.current_time_to_display = msg.data['currentTimeToDisplay'];
@@ -247,19 +249,19 @@ const tzLocal = {
             await entity.read('hvacThermostat', ['SinopeAuxCycleOutput']);
         },
     },
-    enable_outdoor_temperature: {
+    enable_outdoor_temperature: { //DEPRECATED: Use Second Display Mode or control via the timeout
         key: ['enable_outdoor_temperature'],
         convertSet: async (entity, key, value, meta) => {
-//            if (value.toLowerCase() == 'on') {
-//                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 10800}, manuSinope);
-//            } else if (value.toLowerCase() == 'off') {
-//                // set timer to 12 sec in order to disable outdoor temperature
-//                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 12}, manuSinope);
-//            }
-//            return {readAfterWriteTime: 250, state: {enable_outdoor_temperature: value}};
+            if (value.toLowerCase() == 'on') {
+                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 10800}, manuSinope);
+            } else if (value.toLowerCase() == 'off') {
+                // set timer to 12 sec in order to disable outdoor temperature
+                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 12}, manuSinope);
+            }
+            return {readAfterWriteTime: 250, state: {enable_outdoor_temperature: value}};
         },
         convertGet: async (entity, key, meta) => {
-//            await entity.read('manuSpecificSinope', ['outdoorTempToDisplayTimeout'], manuSinope);
+            await entity.read('manuSpecificSinope', ['outdoorTempToDisplayTimeout'], manuSinope);
         },
     },
     second_display_mode: {
@@ -274,9 +276,10 @@ const tzLocal = {
         },
     },
     thermostat_outdoor_temperature: {
+//    outdoor_temperature:{
         key: ['thermostat_outdoor_temperature'],
         convertSet: async (entity, key, value, meta) => {
-            if (value > -100 && value < 100) {
+            if (value >= -99.5 && value <= 99.5) {
                 await entity.write('manuSpecificSinope', {outdoorTempToDisplay: value * 100}, manuSinope);
             }
             return {state: {thermostat_outdoor_temperature: value}};
@@ -454,7 +457,7 @@ const tzLocal = {
         },
     },
     led_intensity_off: {
-        // DM2500ZB and SW2500ZB
+        // DM25x0ZB and SW2500ZB
         key: ['led_intensity_off'],
         convertSet: async (entity, key, value, meta) => {
             if (value >= 0 && value <= 100) {
@@ -491,7 +494,7 @@ const tzLocal = {
         },
     },
     minimum_brightness: {
-        // DM2x0ZB
+        // DM25x0ZB
         key: ['minimum_brightness'],
         convertSet: async (entity, key, value, meta) => {
             if (value >= 0 && value <= 3000) {
@@ -507,9 +510,9 @@ const tzLocal = {
         // DM25x0ZB and SW2500ZB
         key: ['timer_seconds'],
         convertSet: async (entity, key, value, meta) => {
-            if (value >= 0 && value <= 10800) {
+//            if (value >= 0 && value <= 10800) {
                 await entity.write('manuSpecificSinope', {dimmerTimmer: value});
-            }
+//            }
             return {state: {timer_seconds: value}};
         },
         convertGet: async (entity, key, meta) => {
@@ -539,7 +542,7 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
             tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
@@ -559,6 +562,8 @@ module.exports = [
             exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
                 .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
                 .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
+            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
+                .withDescription('DEPRECATED: Use second_display_mode or control via outdoor_temperature_timeout'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -603,13 +608,8 @@ module.exports = [
             await reporting.rmsVoltage(endpoint, {min: 10, max: 307, change: 5}); // divider 10: 0.5Vrms
         },
     },
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////
-    
     {
-        zigbeeModel: ['TH1124ZA'],
+        zigbeeModel: ['TH1124ZB'],
         model: 'TH1124ZB',
         vendor: 'Sinopé',
         description: 'Zigbee line volt thermostat',
@@ -617,7 +617,7 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
             tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
@@ -637,6 +637,8 @@ module.exports = [
             exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
                 .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
                 .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
+            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
+                .withDescription('DEPRECATED: Use second_display_mode or control via outdoor_temperature_timeout'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -690,7 +692,7 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
             tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
@@ -710,6 +712,8 @@ module.exports = [
             exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
                 .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
                 .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
+            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
+                .withDescription('DEPRECATED: Use second_display_mode or control via outdoor_temperature_timeout'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -769,7 +773,7 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
             tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
@@ -789,6 +793,8 @@ module.exports = [
             exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
                 .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
                 .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
+            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
+                .withDescription('DEPRECATED: Use second_display_mode or control via outdoor_temperature_timeout'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -848,7 +854,7 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
             tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint,
             tzLocal.floor_min_heat_setpoint, tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.electrical_measurement_power],
         exposes: [
@@ -869,6 +875,8 @@ module.exports = [
             exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
                 .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
                 .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
+            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
+                .withDescription('DEPRECATED: Use second_display_mode or control via outdoor_temperature_timeout'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -930,7 +938,7 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
             tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint, 
             tzLocal.floor_min_heat_setpoint, tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.thermostat_min_heat_setpoint_limit,
             tz.thermostat_max_heat_setpoint_limit, tzLocal.connected_load, tzLocal.aux_connected_load, tzLocal.main_cycle_output,
@@ -955,6 +963,8 @@ module.exports = [
             exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
                 .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
                 .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
+            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
+                .withDescription('DEPRECATED: Use second_display_mode or control via outdoor_temperature_timeout'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -1026,7 +1036,7 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
             tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy],
         exposes: [
             exposes.climate()
@@ -1046,6 +1056,8 @@ module.exports = [
             exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
                 .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
                 .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
+            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
+                .withDescription('DEPRECATED: Use second_display_mode or control via outdoor_temperature_timeout'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -1068,7 +1080,7 @@ module.exports = [
         },
     },
     {
-        zigbeeModel: ['SW2500ZA'],
+        zigbeeModel: ['SW2500ZB'],
         model: 'SW2500ZB',
         vendor: 'Sinopé',
         description: 'Zigbee smart light switch',
@@ -1077,8 +1089,8 @@ module.exports = [
             tzLocal.led_color_on, tzLocal.led_color_off, tzLocal.keypad_lockout, tzLocal.connected_load],
         exposes: [e.switch(),
             e.action(['up_single', 'up_double', 'up_hold', 'down_single', 'down_double', 'down_hold']),
-            exposes.numeric('timer_seconds', ea.ALL).withUnit('seconds').withValueMin(0).withValueMax(10800)
-                .withDescription('Automatically turn off load after x seconds'),
+            exposes.numeric('timer_seconds', ea.ALL).withUnit('seconds').withValueMin(0).withValueMax(65535)
+                .withPreset('Disabled',0).withDescription('Automatically turn off load after x seconds'),
             exposes.numeric('led_intensity_on', ea.ALL).withUnit('%').withValueMin(0).withValueMax(100)
                 .withDescription('Control status LED intensity when load ON'),
             exposes.numeric('led_intensity_off', ea.ALL).withUnit('%').withValueMin(0).withValueMax(100)
@@ -1127,11 +1139,11 @@ module.exports = [
         toZigbee: [tz.light_onoff_brightness, tzLocal.timer_seconds, tzLocal.led_intensity_on, tzLocal.led_intensity_off,
             tzLocal.minimum_brightness, tzLocal.led_color_on, tzLocal.led_color_off],
         exposes: [e.light_brightness(),
-            exposes.numeric('timer_seconds', ea.ALL).withValueMin(0).withValueMax(10800)
-                .withDescription('Automatically turn off load after x seconds'),
-            exposes.numeric('led_intensity_on', ea.ALL).withValueMin(0).withValueMax(100)
-                .withDescription('Control status LED when load ON'),
-            exposes.numeric('led_intensity_off', ea.ALL).withValueMin(0).withValueMax(100)
+            exposes.numeric('timer_seconds', ea.ALL).withUnit('seconds').withValueMin(0).withValueMax(65535)
+                .withPreset('Disabled',0).withDescription('Automatically turn off load after x seconds'),
+            exposes.numeric('led_intensity_on', ea.ALL).withUnit('%').withValueMin(0).withValueMax(100)
+                .withDescription('Control status LED intensity when load ON'),
+            exposes.numeric('led_intensity_off', ea.ALL).withUnit('%').withValueMin(0).withValueMax(100)
                 .withDescription('Control status LED when load OFF'),
             exposes.numeric('minimum_brightness', ea.ALL).withValueMin(0).withValueMax(3000)
                 .withDescription('Control minimum dimmer brightness'),
@@ -1163,11 +1175,11 @@ module.exports = [
         toZigbee: [tz.light_onoff_brightness, tzLocal.timer_seconds, tzLocal.led_intensity_on, tzLocal.led_intensity_off,
             tzLocal.minimum_brightness, tzLocal.led_color_on, tzLocal.led_color_off],
         exposes: [e.light_brightness(),
-            exposes.numeric('timer_seconds', ea.ALL).withValueMin(0).withValueMax(10800)
-                .withDescription('Automatically turn off load after x seconds'),
-            exposes.numeric('led_intensity_on', ea.ALL).withValueMin(0).withValueMax(100)
-                .withDescription('Control status LED when load ON'),
-            exposes.numeric('led_intensity_off', ea.ALL).withValueMin(0).withValueMax(100)
+            exposes.numeric('timer_seconds', ea.ALL).withUnit('seconds').withValueMin(0).withValueMax(65535)
+                .withPreset('Disabled',0).withDescription('Automatically turn off load after x seconds'),
+            exposes.numeric('led_intensity_on', ea.ALL).withUnit('%').withValueMin(0).withValueMax(100)
+                .withDescription('Control status LED intensity when load ON'),
+            exposes.numeric('led_intensity_off', ea.ALL).withUnit('%').withValueMin(0).withValueMax(100)
                 .withDescription('Control status LED when load OFF'),
             exposes.numeric('minimum_brightness', ea.ALL).withValueMin(0).withValueMax(3000)
                 .withDescription('Control minimum dimmer brightness'),
