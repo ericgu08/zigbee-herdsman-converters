@@ -119,8 +119,15 @@ const fzLocal = {
                 const lookup = {0: 'off', 1: 'on'};
                 result.floor_limit_status = lookup[msg.data['floorLimitStatus']];
             }
+            if (msg.data.hasOwnProperty('secondScreenBehavior')) {
+                const lookup = {0: 'auto', 1: 'setpoint', 2: 'outdoor temp'};
+                result.second_display_mode = lookup[msg.data['secondScreenBehavior']];
+            }
             if (msg.data.hasOwnProperty('outdoorTempToDisplayTimeout')) {
-                result.enable_outdoor_temperature = msg.data['outdoorTempToDisplayTimeout'] == 10800 ? 'ON' : 'OFF';
+                result.outdoor_temperature_timeout = msg.data['outdoorTempToDisplayTimeout'];
+            }
+            if (msg.data.hasOwnProperty('outdoorTempToDisplay')) {
+                result.thermostat_outdoor_temperature = precisionRound(msg.data['outdoorTempToDisplay'], 2) / 100;
             }
             if (msg.data.hasOwnProperty('currentTimeToDisplay')) {
                 result.current_time_to_display = msg.data['currentTimeToDisplay'];
@@ -243,24 +250,51 @@ const tzLocal = {
     enable_outdoor_temperature: {
         key: ['enable_outdoor_temperature'],
         convertSet: async (entity, key, value, meta) => {
-            if (value.toLowerCase() == 'on') {
-                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 10800}, manuSinope);
-            } else if (value.toLowerCase() == 'off') {
-                // set timer to 12 sec in order to disable outdoor temperature
-                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 12}, manuSinope);
-            }
-            return {readAfterWriteTime: 250, state: {enable_outdoor_temperature: value}};
+//            if (value.toLowerCase() == 'on') {
+//                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 10800}, manuSinope);
+//            } else if (value.toLowerCase() == 'off') {
+//                // set timer to 12 sec in order to disable outdoor temperature
+//                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: 12}, manuSinope);
+//            }
+//            return {readAfterWriteTime: 250, state: {enable_outdoor_temperature: value}};
         },
         convertGet: async (entity, key, meta) => {
-            await entity.read('manuSpecificSinope', ['outdoorTempToDisplayTimeout'], manuSinope);
+//            await entity.read('manuSpecificSinope', ['outdoorTempToDisplayTimeout'], manuSinope);
         },
     },
-    outdoor_temperature: {
+    second_display_mode: {
+        key: ['second_display_mode'],
+        convertSet: async (entity, key, value, meta) => {
+            const lookup = {'auto': 0, 'setpoint': 1, 'outdoor temp': 2};
+            await entity.write('manuSpecificSinope', {secondScreenBehavior: lookup[value]});
+            return {state: {second_display_mode: value}};
+        },
+        convertGet: async (entity, key, meta) => {
+            await entity.read('manuSpecificSinope', ['secondScreenBehavior']);
+        },
+    },
+    thermostat_outdoor_temperature: {
         key: ['thermostat_outdoor_temperature'],
         convertSet: async (entity, key, value, meta) => {
             if (value > -100 && value < 100) {
                 await entity.write('manuSpecificSinope', {outdoorTempToDisplay: value * 100}, manuSinope);
             }
+            return {state: {thermostat_outdoor_temperature: value}};
+        },
+        convertGet: async (entity, key, meta) => {
+            await entity.read('manuSpecificSinope', ['outdoorTempToDisplay'], manuSinope);
+        },
+    },
+    outdoor_temperature_timeout: {
+        key: ['outdoor_temperature_timeout'],
+        convertSet: async (entity, key, value, meta) => {
+            if (value >= 30 && value <= 64800) {
+                await entity.write('manuSpecificSinope', {outdoorTempToDisplayTimeout: value});
+                return {state: {outdoor_temperature_timeout: value}};
+            }
+        },
+        convertGet: async (entity, key, meta) => {
+            await entity.read('manuSpecificSinope', ['outdoorTempToDisplayTimeout']);
         },
     },
     thermostat_time: {
@@ -505,8 +539,8 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.outdoor_temperature,
-            tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -517,8 +551,14 @@ module.exports = [
                 .withRunningState(['idle', 'heat'], ea.STATE),
             exposes.enum('thermostat_occupancy', ea.ALL, ['unoccupied', 'occupied'])
                 .withDescription('Occupancy state of the thermostat'),
-            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
-                .withDescription('Showing outdoor temperature on secondary display'),
+            exposes.enum('second_display_mode', ea.ALL, ['auto', 'setpoint', 'outdoor temp'])
+                .withDescription('Displays the outdoor temperature and then returns to the set point in "auto" mode, or clears ' +
+                    'in "outdoor temp" mode when expired.'),
+            exposes.numeric('thermostat_outdoor_temperature', ea.ALL).withUnit('°C').withValueMin(-99.5).withValueMax(99.5).withValueStep(0.5)
+                .withDescription('Outdoor temperature for the secondary display'),
+            exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
+                .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
+                .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -563,8 +603,13 @@ module.exports = [
             await reporting.rmsVoltage(endpoint, {min: 10, max: 307, change: 5}); // divider 10: 0.5Vrms
         },
     },
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+    
     {
-        zigbeeModel: ['TH1124ZB'],
+        zigbeeModel: ['TH1124ZA'],
         model: 'TH1124ZB',
         vendor: 'Sinopé',
         description: 'Zigbee line volt thermostat',
@@ -572,8 +617,8 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.outdoor_temperature,
-            tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -584,8 +629,14 @@ module.exports = [
                 .withRunningState(['idle', 'heat'], ea.STATE),
             exposes.enum('thermostat_occupancy', ea.ALL, ['unoccupied', 'occupied'])
                 .withDescription('Occupancy state of the thermostat'),
-            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
-                .withDescription('Showing outdoor temperature on secondary display'),
+            exposes.enum('second_display_mode', ea.ALL, ['auto', 'setpoint', 'outdoor temp'])
+                .withDescription('Displays the outdoor temperature and then returns to the set point in "auto" mode, or clears ' +
+                    'in "outdoor temp" mode when expired.'),
+            exposes.numeric('thermostat_outdoor_temperature', ea.ALL).withUnit('°C').withValueMin(-99.5).withValueMax(99.5).withValueStep(0.5)
+                .withDescription('Outdoor temperature for the secondary display'),
+            exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
+                .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
+                .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -639,8 +690,8 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.outdoor_temperature,
-            tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -651,8 +702,14 @@ module.exports = [
                 .withRunningState(['idle', 'heat'], ea.STATE),
             exposes.enum('thermostat_occupancy', ea.ALL, ['unoccupied', 'occupied'])
                 .withDescription('Occupancy state of the thermostat'),
-            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
-                .withDescription('Showing outdoor temperature on secondary display'),
+            exposes.enum('second_display_mode', ea.ALL, ['auto', 'setpoint', 'outdoor temp'])
+                .withDescription('Displays the outdoor temperature and then returns to the set point in "auto" mode, or clears ' +
+                    'in "outdoor temp" mode when expired.'),
+            exposes.numeric('thermostat_outdoor_temperature', ea.ALL).withUnit('°C').withValueMin(-99.5).withValueMax(99.5).withValueStep(0.5)
+                .withDescription('Outdoor temperature for the secondary display'),
+            exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
+                .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
+                .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -712,8 +769,8 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.outdoor_temperature,
-            tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -724,8 +781,14 @@ module.exports = [
                 .withRunningState(['idle', 'heat'], ea.STATE),
             exposes.enum('thermostat_occupancy', ea.ALL, ['unoccupied', 'occupied'])
                 .withDescription('Occupancy state of the thermostat'),
-            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
-                .withDescription('Showing outdoor temperature on secondary display'),
+            exposes.enum('second_display_mode', ea.ALL, ['auto', 'setpoint', 'outdoor temp'])
+                .withDescription('Displays the outdoor temperature and then returns to the set point in "auto" mode, or clears ' +
+                    'in "outdoor temp" mode when expired.'),
+            exposes.numeric('thermostat_outdoor_temperature', ea.ALL).withUnit('°C').withValueMin(-99.5).withValueMax(99.5).withValueStep(0.5)
+                .withDescription('Outdoor temperature for the secondary display'),
+            exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
+                .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
+                .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -785,9 +848,9 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.outdoor_temperature,
-            tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint, tzLocal.floor_min_heat_setpoint,
-            tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint,
+            tzLocal.floor_min_heat_setpoint, tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 36, 0.5)
@@ -798,8 +861,14 @@ module.exports = [
                 .withRunningState(['idle', 'heat'], ea.STATE),
             exposes.enum('thermostat_occupancy', ea.ALL, ['unoccupied', 'occupied'])
                 .withDescription('Occupancy state of the thermostat'),
-            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
-                .withDescription('Showing outdoor temperature on secondary display'),
+            exposes.enum('second_display_mode', ea.ALL, ['auto', 'setpoint', 'outdoor temp'])
+                .withDescription('Displays the outdoor temperature and then returns to the set point in "auto" mode, or clears ' +
+                    'in "outdoor temp" mode when expired.'),
+            exposes.numeric('thermostat_outdoor_temperature', ea.ALL).withUnit('°C').withValueMin(-99.5).withValueMax(99.5).withValueStep(0.5)
+                .withDescription('Outdoor temperature for the secondary display'),
+            exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
+                .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
+                .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -861,9 +930,9 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.outdoor_temperature,
-            tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint, tzLocal.floor_min_heat_setpoint,
-            tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.thermostat_min_heat_setpoint_limit,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint, 
+            tzLocal.floor_min_heat_setpoint, tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.thermostat_min_heat_setpoint_limit,
             tz.thermostat_max_heat_setpoint_limit, tzLocal.connected_load, tzLocal.aux_connected_load, tzLocal.main_cycle_output,
             tzLocal.aux_cycle_output, tzLocal.pump_protection],
         exposes: [
@@ -878,8 +947,14 @@ module.exports = [
             e.min_heat_setpoint_limit(5, 36, 0.5),
             exposes.enum('thermostat_occupancy', ea.ALL, ['unoccupied', 'occupied'])
                 .withDescription('Occupancy state of the thermostat'),
-            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
-                .withDescription('Showing outdoor temperature on secondary display'),
+            exposes.enum('second_display_mode', ea.ALL, ['auto', 'setpoint', 'outdoor temp'])
+                .withDescription('Displays the outdoor temperature and then returns to the set point in "auto" mode, or clears ' +
+                    'in "outdoor temp" mode when expired.'),
+            exposes.numeric('thermostat_outdoor_temperature', ea.ALL).withUnit('°C').withValueMin(-99.5).withValueMax(99.5).withValueStep(0.5)
+                .withDescription('Outdoor temperature for the secondary display'),
+            exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
+                .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
+                .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -951,8 +1026,8 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.outdoor_temperature,
-            tzLocal.thermostat_occupancy],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
+            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -963,8 +1038,14 @@ module.exports = [
                 .withRunningState(['idle', 'heat'], ea.STATE),
             exposes.enum('thermostat_occupancy', ea.ALL, ['unoccupied', 'occupied'])
                 .withDescription('Occupancy state of the thermostat'),
-            exposes.binary('enable_outdoor_temperature', ea.ALL, 'ON', 'OFF')
-                .withDescription('Showing outdoor temperature on secondary display'),
+            exposes.enum('second_display_mode', ea.ALL, ['auto', 'setpoint', 'outdoor temp'])
+                .withDescription('Displays the outdoor temperature and then returns to the set point in "auto" mode, or clears ' +
+                    'in "outdoor temp" mode when expired.'),
+            exposes.numeric('thermostat_outdoor_temperature', ea.ALL).withUnit('°C').withValueMin(-99.5).withValueMax(99.5).withValueStep(0.5)
+                .withDescription('Outdoor temperature for the secondary display'),
+            exposes.numeric('outdoor_temperature_timeout', ea.ALL).withUnit('Seconds').withValueMin(30).withValueMax(64800)
+                .withPreset('15 min', 900).withPreset('30 min', 1800).withPreset('1 hour', 3600)
+                .withDescription('Time in seconds after which the outdoor temperature is considered to have expired'),
             exposes.enum('temperature_display_mode', ea.ALL, ['celsius', 'fahrenheit'])
                 .withDescription('The temperature format displayed on the thermostat screen'),
             exposes.enum('time_format', ea.ALL, ['24h', '12h'])
@@ -987,7 +1068,7 @@ module.exports = [
         },
     },
     {
-        zigbeeModel: ['SW2500ZB'],
+        zigbeeModel: ['SW2500ZA'],
         model: 'SW2500ZB',
         vendor: 'Sinopé',
         description: 'Zigbee smart light switch',
@@ -1015,7 +1096,7 @@ module.exports = [
             exposes.enum('keypad_lockout', ea.ALL, ['unlock', 'lock'])
                 .withDescription('Enables or disables the device’s buttons'),
             exposes.numeric('connected_load', ea.ALL)
-                .withUnit('W').withValueMin(1).withValueMax(1800)
+                .withUnit('W').withValueMin(0).withValueMax(1800)
                 .withDescription('Load connected in watt'),
             e.energy(),
         ],
@@ -1025,6 +1106,7 @@ module.exports = [
             await reporting.bind(endpoint, coordinatorEndpoint, binds);
             await reporting.onOff(endpoint);
             try {
+                await reporting.readMeteringMultiplierDivisor(endpoint);
                 await reporting.currentSummDelivered(endpoint, {min: 10, max: 300, change: [0, 10]});
             } catch (error) {/* Do nothing*/}
             const payload = [{
