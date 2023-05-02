@@ -47,10 +47,10 @@ const fzLocal = {
             if (msg.data.hasOwnProperty('SinopeMainCycleOutput')) {
                 result.main_cycle_output = cycleOutputLookup[msg.data['SinopeMainCycleOutput']];
             }
-//            if (msg.data.hasOwnProperty('1026')) {
-//                const lookup = {0: 'on_demand', 1: 'sensing'};
-//                result.backlight_auto_dim = lookup[msg.data['1026']];
-//            }
+            if (msg.data.hasOwnProperty('1026')) {
+                const lookup = {0: 'on_demand', 1: 'sensing'};
+                result.backlight_auto_dim = lookup[msg.data['1026']];
+            }
             if (msg.data.hasOwnProperty('SinopeBacklight')) {
                 const lookup = {0: 'on_demand', 1: 'sensing'};
                 result.backlight_auto_dim = lookup[msg.data['SinopeBacklight']];
@@ -125,11 +125,11 @@ const fzLocal = {
             }
             if (msg.data.hasOwnProperty('outdoorTempToDisplayTimeout')) {
                 result.outdoor_temperature_timeout = msg.data['outdoorTempToDisplayTimeout'];
+                // DEPRECATED: Use Second Display Mode or control via set outdoorTempToDisplayTimeout
+                result.enable_outdoor_temperature = msg.data['outdoorTempToDisplayTimeout'] === 12 ? 'OFF' : 'ON';
             }
             if (msg.data.hasOwnProperty('outdoorTempToDisplay')) {
                 result.thermostat_outdoor_temperature = precisionRound(msg.data['outdoorTempToDisplay'], 2) / 100;
-                // DEPRECATED: Use Second Display Mode or control via set outdoorTempToDisplayTimeout
-                result.enable_outdoor_temperature = msg.data['outdoorTempToDisplayTimeout'] === 12 ? 'OFF' : 'ON';
             }
             if (msg.data.hasOwnProperty('currentTimeToDisplay')) {
                 result.current_time_to_display = msg.data['currentTimeToDisplay'];
@@ -542,8 +542,9 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
-            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode,
+            tzLocal.thermostat_outdoor_temperature, tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy,
+            tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -617,8 +618,9 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
-            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode,
+            tzLocal.thermostat_outdoor_temperature, tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy,
+            tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -692,8 +694,9 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
-            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode,
+            tzLocal.thermostat_outdoor_temperature, tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy,
+            tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -773,8 +776,9 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
-            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.main_cycle_output, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode,
+            tzLocal.thermostat_outdoor_temperature, tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy,
+            tzLocal.main_cycle_output, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
@@ -854,9 +858,10 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
-            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint,
-            tzLocal.floor_min_heat_setpoint, tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.electrical_measurement_power],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode,
+            tzLocal.thermostat_outdoor_temperature, tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy,
+            tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint, tzLocal.floor_min_heat_setpoint,
+            tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.electrical_measurement_power],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 36, 0.5)
@@ -938,9 +943,10 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
-            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy, tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint, 
-            tzLocal.floor_min_heat_setpoint, tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.thermostat_min_heat_setpoint_limit,
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode,
+            tzLocal.thermostat_outdoor_temperature, tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy,
+            tzLocal.floor_control_mode, tzLocal.ambiant_max_heat_setpoint, tzLocal.floor_min_heat_setpoint,
+            tzLocal.floor_max_heat_setpoint, tzLocal.temperature_sensor, tz.thermostat_min_heat_setpoint_limit,
             tz.thermostat_max_heat_setpoint_limit, tzLocal.connected_load, tzLocal.aux_connected_load, tzLocal.main_cycle_output,
             tzLocal.aux_cycle_output, tzLocal.pump_protection],
         exposes: [
@@ -1036,8 +1042,8 @@ module.exports = [
             fz.electrical_measurement, fz.metering, fz.ignore_temperature_report],
         toZigbee: [tz.thermostat_local_temperature, tz.thermostat_occupied_heating_setpoint, tz.thermostat_unoccupied_heating_setpoint,
             tz.thermostat_temperature_display_mode, tz.thermostat_keypad_lockout, tz.thermostat_system_mode, tzLocal.backlight_autodim,
-            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode, tzLocal.thermostat_outdoor_temperature,
-            tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy],
+            tzLocal.thermostat_time, tzLocal.time_format, tzLocal.enable_outdoor_temperature, tzLocal.second_display_mode,
+            tzLocal.thermostat_outdoor_temperature, tzLocal.outdoor_temperature_timeout, tzLocal.thermostat_occupancy],
         exposes: [
             exposes.climate()
                 .withSetpoint('occupied_heating_setpoint', 5, 30, 0.5)
